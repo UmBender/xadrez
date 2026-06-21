@@ -1,0 +1,477 @@
+\documentclass[12pt]{article}
+
+\usepackage[brazil]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[a4paper,top=2cm,bottom=2cm,left=3cm,right=3cm]{geometry}
+\usepackage{enumitem}
+\usepackage{xurl}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+
+\setlist[itemize]{leftmargin=1.2cm}
+\setlist[enumerate]{leftmargin=1.2cm}
+
+\title{Relatório Técnico\\Xadrez Multiplayer Cooperativo}
+\author{Gustavo Bender \and Guilherme Munhoz Serradilha}
+\date{2026}
+
+\begin{document}
+
+\begin{titlepage}
+    \thispagestyle{empty}
+    \centering
+
+    {\large Universidade de São Paulo\par}
+    {\large Faculdade de Filosofia, Ciências e Letras de Ribeirão Preto\par}
+    {\large Trabalho Integrado de Sistemas Distribuídos e Introdução ao Desenvolvimento Web\par}
+
+    \vspace{3cm}
+
+    {\large Gustavo Bender\par}
+    {\large Guilherme Munhoz Serradilha\par}
+
+    \vfill
+
+    {\Large\bfseries Relatório Técnico\par}
+    \vspace{0.5cm}
+    {\Large\bfseries Xadrez Multiplayer Cooperativo\par}
+
+    \vspace{2cm}
+
+    \begin{flushright}
+        \begin{minipage}{0.55\textwidth}
+            Relatório técnico apresentado como parte do Trabalho Integrado das disciplinas de Sistemas Distribuídos e Introdução ao Desenvolvimento Web.
+        \end{minipage}
+    \end{flushright}
+
+    \vfill
+
+    {\large Ribeirão Preto\par}
+    {\large 2026\par}
+\end{titlepage}
+
+\clearpage
+\thispagestyle{empty}
+\tableofcontents
+\clearpage
+
+\section*{Resumo}
+\addcontentsline{toc}{section}{Resumo}
+Este relatório descreve a aplicação Xadrez Multiplayer Cooperativo, desenvolvida como trabalho integrado das disciplinas de Sistemas Distribuídos e Introdução ao Desenvolvimento Web. O sistema segue uma arquitetura multitier, com frontend em Flutter/Dart, backend em Go e persistência em MongoDB. A aplicação combina API RESTful para autenticação, salas e histórico com WebSocket para sincronização de partidas em tempo real. Além do modo clássico 1v1, o projeto implementa modos colaborativos 2v2 e 3v3, nos quais a interface e o servidor coordenam papeis, turnos, propostas de movimento, empate, rendição, revanche e histórico de partidas.
+
+\section{Introdução}
+
+O enunciado do trabalho integrado solicita a construção de uma aplicação web baseada em arquitetura multitier, com separação entre interface, processamento/logica de negocio e camada de dados. Também exige persistência, interface web interativa e responsiva, uso de API RESTful e possibilidade de substituição parcial por WebSocket quando houver necessidade de atualização em tempo real.
+
+O projeto desenvolvido e uma aplicação de xadrez multiplayer com proposta cooperativa. O usuário pode criar conta, entrar no sistema, criar ou acessar salas, escolher equipe, jogar partidas em tempo real e consultar histórico. A aplicação também oferece replay de partidas salvas, permitindo revisar lances já persistidos.
+
+\section{Objetivos do Sistema}
+
+O objetivo principal do sistema e permitir partidas de xadrez online entre múltiplos usuários, explorando comunicação cliente-servidor, sincronização em tempo real e persistência de dados.
+
+Os objetivos específicos são:
+
+\begin{itemize}
+    \item oferecer cadastro e login de usuários;
+    \item permitir criação e listagem de salas de jogo;
+    \item sincronizar o estado do tabuleiro entre jogadores em tempo real;
+    \item suportar modos 1v1, 2v2 e 3v3;
+    \item registrar histórico de partidas e movimentos;
+    \item permitir replay das partidas finalizadas;
+    \item demonstrar separação entre frontend, backend e banco de dados.
+\end{itemize}
+
+\section{Arquitetura Geral}
+
+A arquitetura do projeto e organizada em camadas. O frontend representa a camada de apresentação, responsável por renderizar telas, capturar interações e consumir os serviços do backend. O backend representa a camada de processamento e regras de negocio, validando usuários, gerenciando salas, aplicando regras de jogo e coordenando mensagens WebSocket. O MongoDB representa a camada de dados, armazenando usuários e partidas.
+
+Essa divisão atende ao requisito de arquitetura multitier, pois as responsabilidades ficam separadas:
+
+\begin{itemize}
+    \item \textbf{Apresentação}: Flutter/Dart, no diretório \texttt{front/};
+    \item \textbf{Processamento}: Go, no diretório \texttt{back/};
+    \item \textbf{Dados}: MongoDB, acessado pelos repositórios do backend;
+    \item \textbf{Comunicação}: REST para operações gerais e WebSocket para partidas.
+\end{itemize}
+
+\section{Tecnologias Utilizadas}
+
+No frontend, foram identificadas as seguintes tecnologias e bibliotecas:
+
+\begin{itemize}
+    \item Flutter Material, para construção da interface;
+    \item Dart, como linguagem da camada de apresentação;
+    \item pacote \texttt{http}, para requisições REST;
+    \item \texttt{shared\_preferences}, para manter o usuário salvo localmente;
+    \item \texttt{web\_socket\_channel}, para comunicação em tempo real;
+    \item pacote \texttt{chess}, para reconstruir partidas no replay.
+\end{itemize}
+
+No backend, foram utilizadas:
+
+\begin{itemize}
+    \item Go 1.25;
+    \item MongoDB, com o driver oficial \texttt{mongo-driver};
+    \item \texttt{gorilla/websocket}, para conexões WebSocket;
+    \item \texttt{bcrypt}, para hash de senhas;
+    \item \texttt{github.com/corentings/chess}, para validação e manipulação de partidas de xadrez.
+\end{itemize}
+
+\section{Frontend}
+
+O frontend esta no diretório \texttt{front/} e foi estruturado como um conjunto de telas Flutter. Ele e responsável por apresentar a aplicação ao usuário e traduzir suas acoes em chamadas REST ou mensagens WebSocket.
+
+\subsection{Arquivos Principais}
+
+Os arquivos principais do frontend são:
+
+\begin{itemize}
+    \item \texttt{front/main.dart}: inicialização, login, cadastro, menu principal e histórico;
+    \item \texttt{front/room.dart}: listagem e criação de salas;
+    \item \texttt{front/gamescreen.dart}: tela da partida, tabuleiro e WebSocket;
+    \item \texttt{front/match\_viewer.dart}: replay de partidas salvas;
+\end{itemize}
+
+\subsection{Inicialização e Sessão}
+
+A aplicação inicia em \texttt{main.dart}. Antes de renderizar a interface, o código inicializa o Flutter e consulta o \texttt{SharedPreferences} para verificar se existe um nome de usuário salvo. Se houver usuário persistido localmente, o sistema abre o menu principal. Caso contrario, apresenta a tela de autenticação.
+
+Esse fluxo simplifica a experiencia do usuário, pois evita novo login a cada abertura da aplicação. O logout remove o nome salvo e retorna para a tela de login.
+
+\subsection{Autenticação}
+
+A tela de autenticação alterna entre cadastro e login. No cadastro, o frontend envia uma requisição \texttt{POST} para:
+
+\begin{itemize}
+    \item \url{https://xadrez-a8qm.onrender.com/api/register}
+\end{itemize}
+
+No login, envia uma requisição \texttt{POST} para:
+
+\begin{itemize}
+    \item \url{https://xadrez-a8qm.onrender.com/api/login}
+\end{itemize}
+
+O corpo das requisições contem \texttt{username} e \texttt{password}. Quando o login e bem-sucedido, o nome de usuário e salvo localmente e a aplicação redireciona para o menu principal.
+
+\subsection{Menu Principal e Responsividade}
+
+O menu principal permite escolher o modo de jogo e acessar as principais funcionalidades. Os modos disponíveis são:
+
+\begin{itemize}
+    \item \texttt{1v1}: xadrez clássico;
+    \item \texttt{2v2}: modo em duplas;
+    \item \texttt{3v3}: modo conselho.
+\end{itemize}
+
+As ações disponíveis são criar partida, listar salas abertas e consultar histórico. O menu usa \texttt{MediaQuery} para adaptar o layout ao tamanho da tela. Em telas largas, os modos e as acoes aparecem lado a lado. Em telas menores, os elementos são reorganizados em coluna.
+
+\subsection{Salas de Jogo}
+
+A tela \texttt{room.dart} consulta o endpoint:
+
+\begin{itemize}
+    \item \url{https://xadrez-a8qm.onrender.com/api/rooms}
+\end{itemize}
+
+O retorno contem as salas disponíveis, com identificador, nome, número de jogadores e modo de jogo. O usuário também pode criar uma nova sala; nesse caso, o frontend gera um código aleatório de quatro caracteres e solicita a escolha da equipe, representada por \texttt{w} para brancas ou \texttt{b} para pretas.
+
+\subsection{Partida em Tempo Real}
+
+A tela de partida, em \texttt{gamescreen.dart}, abre uma conexão WebSocket com o backend:
+
+\begin{itemize}
+    \item \url{wss://xadrez-a8qm.onrender.com/ws/play}
+\end{itemize}
+
+Os parâmetros enviados na URL identificam sala, usuário, modo e equipe. Por essa conexão, o frontend recebe o estado da partida e envia as acoes do jogador.
+
+O estado recebido pelo WebSocket inclui:
+
+\begin{itemize}
+    \item FEN atual do tabuleiro;
+    \item status da partida;
+    \item lances validos;
+    \item quantidade de jogadores;
+    \item jogadores conectados;
+    \item papeis ativos;
+    \item propostas de movimento;
+    \item votos de revanche;
+    \item oferta de empate.
+\end{itemize}
+
+\subsection{Tabuleiro e Envio de Lances}
+
+O tabuleiro é reconstruído a partir do FEN enviado pelo backend. A interface interpreta letras como pecas, números como casas vazias e barras como troca de linha. As pecas são exibidas por imagens remotas e as casas recebem marcações visuais para seleção, destinos validos e lances em disputa.
+
+O envio de lances segue o formato UCI. Um lance comum pode ser representado por \texttt{e2e4}; uma promoção pode ser representada por \texttt{e7e8q}. Antes do envio, a interface consulta a lista de lances validos recebida do backend. Se o lance envolver promoção de peão, um dialogo permite escolher rainha, torre, bispo ou cavalo.
+
+\subsection{Modos Colaborativos}
+
+No modo \texttt{1v1}, a interface exibe um jogador por lado. No modo \texttt{2v2}, exibe dois jogadores por equipe e respeita os papeis ativos definidos pelo backend. No modo \texttt{3v3}, a interface suporta a regra de conselho: dois jogadores propõem lances e, se houver divergência, um terceiro jogador decide qual lance sera executado.
+
+Esse comportamento torna o sistema mais rico do que uma partida simples de xadrez online, pois exige coordenação entre vários usuários conectados simultaneamente.
+
+\subsection{Empate, Rendição e Revanche}
+
+Durante a partida, o usuário pode pedir empate, aceitar empate, render-se ou solicitar revanche apos o fim do jogo. Essas acoes são enviadas pelo WebSocket como mensagens especiais:
+
+\begin{itemize}
+    \item \texttt{offer\_draw};
+    \item \texttt{resign};
+    \item \texttt{rematch}.
+\end{itemize}
+
+Quando a partida termina, a interface mostra um dialogo com o resultado, indicando vitoria das brancas, vitoria das pretas ou empate.
+
+\subsection{Histórico e Replay}
+
+O histórico consulta o endpoint:
+
+\begin{itemize}
+    \item \url{https://xadrez-a8qm.onrender.com/api/history}
+\end{itemize}
+
+A tela apresenta modo, equipes, data e resultado relativo ao usuário logado. Ao selecionar uma partida com lances salvos, o usuário abre a tela \texttt{match\_viewer.dart}, que usa a biblioteca \texttt{chess} para reconstruir a partida lance a lance.
+
+\section{Backend}
+
+O backend esta no diretório \texttt{back/} e foi implementado em Go. Ele concentra a autenticação, a logica das salas, a validação das jogadas, a sincronização WebSocket e a persistência em MongoDB.
+
+\subsection{Organização em Camadas}
+
+O backend foi dividido em pacotes com responsabilidades claras:
+
+\begin{itemize}
+    \item \texttt{cmd/api}: ponto de entrada da aplicação;
+    \item \texttt{internal/delivery}: rotas HTTP, CORS, WebSocket e serialização JSON;
+    \item \texttt{internal/service}: regras de negocio, autenticação, tokens e salas;
+    \item \texttt{internal/repository}: acesso ao MongoDB;
+    \item \texttt{internal/domain}: modelos e interfaces;
+    \item \texttt{pkg/config}: carregamento de configuração por variáveis de ambiente.
+\end{itemize}
+
+Essa organização favorece manutenção, testes e separação entre entrada, negocio e dados.
+
+\subsection{Inicialização}
+
+A inicialização ocorre em \texttt{back/cmd/api/main.go}. O servidor carrega configurações, conecta ao MongoDB, cria repositórios, instancia serviços, registra rotas e inicia o servidor HTTP.
+
+As variáveis de ambiente principais são:
+
+\begin{itemize}
+    \item \texttt{MONGO\_URI};
+    \item \texttt{JWT\_SECRET};
+    \item \texttt{PORT};
+    \item \texttt{MONGO\_DATABASE};
+    \item \texttt{MONGO\_USERS\_COLLECTION};
+    \item \texttt{MONGO\_MATCHES\_COLLECTION};
+    \item \texttt{JWT\_TTL\_MINUTES}.
+\end{itemize}
+
+\subsection{Domínio}
+
+O pacote \texttt{internal/domain} define as estruturas centrais do sistema. O usuário possui nome, senha e salt. A partida registra identificador, modo, FEN atual, jogadores por papel, status, data e lista de movimentos. As mensagens WebSocket representam tanto movimentos enviados pelo cliente quanto respostas de estado enviadas pelo servidor.
+
+As interfaces \texttt{UserRepository} e \texttt{MatchRepository} isolam a camada de negocio da implementação concreta de persistência.
+
+\subsection{Autenticação e Tokens}
+
+O serviço de autenticação valida dados de entrada, verifica usuários existentes e salva novos usuários no MongoDB. A senha não e armazenada em texto puro. O backend gera um salt aleatório, concatena esse salt com a senha e aplica \texttt{bcrypt}.
+
+No login, o backend busca o usuario, compara o hash da senha e gera um token assinado com HMAC SHA-256. O token possui sujeito, instante de emissão e instante de expiração.
+
+\subsection{Persistência}
+
+A persistência e feita em MongoDB, um banco de dados não relacional orientado a documentos. Essa escolha combina bem com a aplicação porque os registros do sistema possuem estruturas naturalmente representáveis em JSON/BSON, como usuários, partidas, listas de movimentos e campos opcionais para os diferentes modos de jogo.
+
+O backend não acessa o banco diretamente a partir das rotas. O acesso e concentrado no pacote \texttt{internal/repository}, que implementa interfaces definidas em \texttt{internal/domain}. Essa separação permite que a camada de serviços trabalhe com contratos, como \texttt{UserRepository} e \texttt{MatchRepository}, sem depender dos detalhes internos do MongoDB.
+
+A conexão com o banco e configurada na inicialização do servidor. O arquivo \texttt{back/cmd/api/main.go} carrega as variáveis de ambiente pelo pacote \texttt{pkg/config}, cria o cliente MongoDB e seleciona o banco e as coleções. As principais configurações relacionadas ao banco são:
+
+\begin{itemize}
+    \item \texttt{MONGO\_URI}: endereço de conexão com o MongoDB;
+    \item \texttt{MONGO\_DATABASE}: nome do banco utilizado pela aplicação;
+    \item \texttt{MONGO\_USERS\_COLLECTION}: nome da coleção de usuários;
+    \item \texttt{MONGO\_MATCHES\_COLLECTION}: nome da coleção de partidas.
+\end{itemize}
+
+Quando essas variáveis opcionais não são informadas, o backend usa valores padrão definidos em \texttt{config.go}: banco \texttt{auth\_db}, coleção \texttt{users} para usuários e coleção \texttt{matches} para partidas. A variável \texttt{MONGO\_URI} e obrigatória, pois sem ela o servidor não consegue estabelecer conexão com o banco.
+
+\subsubsection{Coleção de Usuários}
+
+A coleção de usuários armazena as credenciais necessárias para autenticação. Cada documento possui:
+
+\begin{itemize}
+    \item \texttt{username}: nome do usuário;
+    \item \texttt{password}: senha processada com \texttt{bcrypt};
+    \item \texttt{salt}: valor aleatório usado junto com a senha antes do hash.
+\end{itemize}
+
+No cadastro, o serviço de autenticação verifica se o nome de usuário já existe. Se não existir, gera um salt, cria o hash da senha e chama o repositório de usuários para inserir o novo documento. No login, o repositório busca o documento pelo campo \texttt{username}; em seguida, o serviço compara a senha informada com o hash armazenado.
+
+\subsubsection{Coleção de Partidas}
+
+A coleção de partidas registra o histórico do jogo. Cada documento de partida armazena:
+
+\begin{itemize}
+    \item \texttt{\_id}: identificador da sala ou partida;
+    \item \texttt{mode}: modo de jogo, como \texttt{1v1}, \texttt{2v2} ou \texttt{3v3};
+    \item \texttt{current\_fen}: estado atual do tabuleiro em formato FEN;
+    \item nomes dos jogadores nos papeis \texttt{white\_name}, \texttt{black\_name}, \texttt{w2\_name}, \texttt{b2\_name}, \texttt{w3\_name} e \texttt{b3\_name};
+    \item \texttt{status}: resultado ou estado da partida;
+    \item \texttt{date}: data registrada;
+    \item \texttt{moves}: lista de movimentos em formato UCI.
+\end{itemize}
+
+O repositório de partidas salva os dados com \texttt{upsert}. Isso significa que, se a partida ainda não existe na coleção, ela e criada; se já existe, seus campos são atualizados. Esse comportamento e útil porque a mesma sala pode receber novas atualizações de estado ao longo do jogo, sem exigir que o backend trate manualmente a diferença entre criação e atualização.
+
+A busca de histórico considera todos os papeis possíveis ocupados por um jogador: \texttt{white\_name}, \texttt{black\_name}, \texttt{w2\_name}, \texttt{b2\_name}, \texttt{w3\_name} e \texttt{b3\_name}. Dessa forma, o historico funciona para partidas 1v1, 2v2 e 3v3.
+
+Essa estrutura tambem permite que o frontend recupere a lista de partidas de um usuário e abra o replay. O replay depende especialmente do campo \texttt{moves}, pois a tela \texttt{match\_viewer.dart} reconstrói o tabuleiro aplicando os movimentos em ordem.
+
+\subsection{Rotas REST}
+
+As rotas REST registradas são:
+
+\begin{itemize}
+    \item \texttt{POST /api/register}: cadastro de usuário;
+    \item \texttt{POST /api/login}: login;
+    \item \texttt{GET /api/rooms}: listagem de salas disponíveis;
+    \item \texttt{GET /api/history}: consulta de histórico por usuário.
+\end{itemize}
+
+O servidor também configura CORS, permitindo a comunicação entre frontend e backend mesmo quando executados em origens diferentes.
+
+\subsection{WebSocket}
+
+O endpoint WebSocket e:
+
+\begin{itemize}
+    \item \texttt{WS /ws/play}
+\end{itemize}
+
+Quando um cliente se conecta, o backend identifica sala, usuário, modo e equipe. Em seguida, registra o cliente na sala, atribui um papel e envia o estado atualizado para todos os participantes. Durante a partida, cada mensagem recebida e processada como movimento, pedido de empate, rendição ou revanche.
+
+\subsection{Gerenciamento de Salas}
+
+O \texttt{RoomManager} mantém salas em memoria e controla criação, entrada, saída, listagem e exclusão de salas vazias. Cada sala possui estado próprio, incluindo jogo, movimentos, clientes, propostas de movimento, votos de revanche e oferta de empate.
+
+O numero máximo de jogadores depende do modo:
+
+\begin{itemize}
+    \item \texttt{1v1}: 2 jogadores;
+    \item \texttt{2v2}: 4 jogadores;
+    \item \texttt{3v3}: 6 jogadores.
+\end{itemize}
+
+\subsection{Regras de Jogo}
+
+No modo \texttt{1v1}, os papeis ativos alternam entre \texttt{w1} e \texttt{b1}. No modo \texttt{2v2}, a alternância segue a ordem \texttt{w1}, \texttt{b1}, \texttt{w2}, \texttt{b2}. No modo \texttt{3v3}, dois jogadores da equipe propõem lances e um terceiro atua como decisor quando ha divergência.
+
+O backend usa a biblioteca de xadrez para validar e executar lances. Apos um lance valido, o servidor atualiza a lista de movimentos, limpa propostas pendentes, atualiza o FEN e persiste o estado da partida.
+
+\subsection{Concorrência}
+
+Como o sistema trabalha com múltiplas conexões simultâneas, o backend usa mecanismos de sincronização:
+
+\begin{itemize}
+    \item \texttt{sync.RWMutex} para proteger salas;
+    \item \texttt{sync.RWMutex} para proteger o mapa de clientes conectados;
+    \item \texttt{atomic} para gerar identificadores de clientes;
+    \item locks curtos durante alterações do estado compartilhado.
+\end{itemize}
+
+Esse cuidado e essencial em um sistema distribuído com vários usuários enviando mensagens em tempo real.
+
+\section{Integração Entre Frontend e Backend}
+
+A integração entre as camadas ocorre por REST e WebSocket. O REST e usado para operações pontuais, como cadastro, login, consulta de salas e histórico. O WebSocket e usado para a partida, pois o estado do tabuleiro precisa ser atualizado imediatamente para todos os jogadores.
+
+O fluxo resumido da aplicação e:
+
+\begin{enumerate}
+    \item o usuário realiza cadastro ou login pelo frontend;
+    \item o frontend consulta ou cria uma sala;
+    \item o usuário escolhe a equipe;
+    \item o frontend abre WebSocket com sala, usuário, modo e equipe;
+    \item o backend registra o cliente e envia o estado da sala;
+    \item os jogadores enviam movimentos ou acoes especiais;
+    \item o backend valida, atualiza e persiste o estado;
+    \item o frontend recebe broadcasts e atualiza a interface.
+\end{enumerate}
+
+\section{Persistência de Dados}
+
+A persistência atende duas necessidades principais. A primeira e armazenar usuários com senha protegida por salt e hash. A segunda e armazenar partidas, incluindo FEN, jogadores, status, data e lista de movimentos.
+
+O histórico de partidas no frontend depende diretamente desses registros. O replay também se apoia na lista de movimentos persistida, mostrando como a camada de dados contribui para funcionalidades visíveis ao usuário.
+
+\section{Testes e Verificação}
+
+O backend possui testes automatizados para autenticação, tokens, salas, rotas HTTP, WebSocket e configuracao. Durante a verificação local, o comando \texttt{go test ./...} foi executado com sucesso no diretório \texttt{back/}.
+
+Os testes cobrem:
+
+\begin{itemize}
+    \item hash e validação de senha;
+    \item geração e validação de token;
+    \item entrada em sala e controle de capacidade;
+    \item alternância de papeis;
+    \item decisão no modo \texttt{3v3};
+    \item persistência de lances;
+    \item rotas REST;
+    \item fluxo WebSocket.
+\end{itemize}
+
+\section{Atendimento aos Requisitos do Trabalho}
+
+O sistema atende aos requisitos técnicos do enunciado da seguinte forma:
+
+\begin{itemize}
+    \item \textbf{Arquitetura multitier}: frontend, backend e banco de dados estão separados por responsabilidades;
+    \item \textbf{Persistência de dados}: usuários e partidas são armazenados em MongoDB;
+    \item \textbf{Interface interativa e responsiva}: o frontend apresenta telas interativas, menu adaptável e tabuleiro atualizado em tempo real;
+    \item \textbf{API RESTful}: cadastro, login, salas e histórico usam endpoints REST;
+    \item \textbf{WebSocket}: partidas são sincronizadas por WebSocket, substituindo parte da comunicação REST onde o tempo real e necessário;
+    \item \textbf{Relatório técnico}: este documento descreve arquitetura, decisões de projeto, tecnologias e funcionamento das camadas.
+\end{itemize}
+
+\section{Pontos Fortes}
+
+Entre os pontos fortes do projeto, destacam-se:
+
+\begin{itemize}
+    \item separação clara entre frontend, backend e persistência;
+    \item uso adequado de WebSocket para comunicação em tempo real;
+    \item suporte a modos colaborativos além do xadrez clássico;
+    \item histórico e replay de partidas;
+    \item senhas protegidas por salt e \texttt{bcrypt};
+    \item backend com testes automatizados;
+    \item regras de negocio concentradas em servicos no backend;
+    \item interface com feedback visual, diálogos e indicação de jogadores ativos.
+\end{itemize}
+
+\section{Limitações e Melhorias Futuras}
+
+Algumas limitações foram identificadas durante a analise:
+
+\begin{itemize}
+    \item as URLs do backend estão fixas no código do frontend;
+    \item o frontend salva localmente apenas o nome do usuário, embora o backend retorne token;
+    \item as imagens das pecas dependem de URLs externas;
+    \item as chamadas HTTP ficam diretamente nas telas, sem uma camada própria de serviço no frontend;
+    \item o estado das salas em andamento fica em memoria no backend, embora o histórico das partidas seja persistido.
+\end{itemize}
+
+Como melhorias futuras, poderiam ser implementadas configurações por ambiente, uso efetivo do token no frontend, centralização das chamadas HTTP, empacotamento completo do projeto Flutter e persistência mais ampla do estado das salas.
+
+\section{Conclusão}
+
+O projeto Xadrez Multiplayer Cooperativo cumpre os principais requisitos do trabalho integrado. A aplicação combina interface Flutter, backend Go e MongoDB em uma arquitetura multitier clara. A comunicação REST atende opera coes convencionais, enquanto o WebSocket resolve a necessidade de sincronização em tempo real durante as partidas.
+
+O sistema também apresenta uma proposta funcional diferenciada ao suportar modos 2v2 e 3v3, adicionando regras colaborativas ao xadrez online. O backend demonstra organização em camadas, controle de concorrência, persistência e testes. O frontend transforma esses recursos em uma experiencia interativa com login, salas, tabuleiro, histórico e replay.
+
+Assim, a solução desenvolvida demonstra a integração entre conceitos de sistemas distribuídos e desenvolvimento web, atendendo aos critérios técnicos estabelecidos no enunciado e fornecendo uma base consistente para apresentação e avaliação do trabalho.
+
+\end{document}
